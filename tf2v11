@@ -1,0 +1,173 @@
+Bootstrap: docker
+From: centos:7
+
+%help
+    Container for 
+    tensorflor-gpu=2.8.0
+    torch1.11.0+cu113
+    cudatoolkit=11.6.2
+    cudnn=8.4.0.27
+    jupyter
+    jupyterlab
+    tensorRT=8.4.1.5
+    no nvidia-driver 470
+    CentOS 7
+    python 3.8
+
+%environment
+    # Set system locale, cuDNN has to be downloaded locally
+    PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
+    CUDA=/usr/local/cuda/lib64:/usr/local/cuda-11.4/lib64:/usr/local/cuda-11.4/targets/x86_64-linux/lib/
+    LD_LIBRARY_PATH=/.singularity.d/libs:$CUDA
+    #PYTHONPATH=modules:/usr/local/lib/python3.11/dist-packages/:/usr/bin/python3.11:/usr/local/lib/python3.11
+    LANG=C.UTF-8 LC_ALL=C.UTF-8
+
+%post
+    # Change to tmp directory to download temporary files.
+    #echo 'Dpkg::Post-Invoke {"/bin/chown -R root:root /var/lib/apt /var/cache/apt";};' > /etc/apt/apt.conf.d/singularity-chown
+
+    cd /tmp
+    # Install essential software, languages and libraries.
+    yum install -y -q deltarpm
+    yum update -y -q
+    yum makecache
+
+    yum install -y -q \
+        autoconf \
+        automake \
+        yum-utils \
+        bzip2 \
+        ca-certificates \
+        cmake \
+        gcc \
+        dialog \
+        gcc-c++ \
+        gcc-gfortran \
+        git \
+        gnupg2 \
+        epel-release \
+        kernel-devel \
+        libtool \
+        libjpeg-devel \
+        zlib-devel \
+        zlib \
+        eigen3-devel \
+        bzip2-devel \
+        libffi-devel \
+        libXt-devel \
+        xz-devel \
+        make \
+        neovim \
+        perl \
+        ncurses-devel \
+        sqlite-devel \
+        readline-devel \
+        tk-devel \
+        gdbm-devel \
+        db4-devel \
+        libpcap-devel \
+        java-1.8.0-openjdk-devel \
+        swig \
+        vim \
+        less \
+        wget \
+        xorg-x11-server-Xvfb \
+        libXfont \
+        zip \
+        environment-modules \
+        opencl-headers \
+        opencl-filesystem \
+        ocl-icd \
+        openssl-devel \
+        kernel-headers \
+        dkms 
+        
+    export LANG=en_US.utf-8
+    echo "LC_ALL=en_US.utf-8" >> /etc/environment
+
+    # upgrade openssl for python > 3.7
+    #wget https://www.openssl.org/source/openssl-1.1.1o.tar.gz
+    tar -zxvf openssl-1.1.1o.tar.gz
+    cd openssl-1.1.1o
+    ./config --prefix=/usr/local/openssl no-zlib
+    make
+    make install
+
+    ln -s /usr/local/openssl/include/openssl /usr/include/openssl
+    ln -s /usr/local/openssl/lib/libssl.so.1.1 /usr/local/lib64/libssl.so
+    ln -s /usr/local/openssl/bin/openssl /usr/bin/openssl
+    echo "/usr/local/openssl/lib" >> /etc/ld.so.conf
+    ldconfig -v
+
+    cd /tmp
+
+    # install python3.11
+    yum groups mark install -y -q "Development Tools"
+    #wget https://www.python.org/ftp/python/3.11.0/Python-3.11.0b2.tgz
+    #tar -xzf Python-3.11.0b2.tgz
+    cd Python-3.11.0b2
+    ./configure --enable-optimizations --with-openssl=/usr/local/openssl
+    make -j "$(nproc)"
+    make altinstall
+    python3.11 -m pip install --upgrade pip
+    python3.11 -m pip --no-cache-dir install setuptools --upgrade
+
+    cd /tmp
+    # install cudatoolkits 11-4 that operate in x86-64, 18.04-Ubuntu, deb (local) installer type
+    #wget https://developer.download.nvidia.com/compute/cuda/11.6.2/local_installers/cuda-repo-rhel7-11-6-local-11.6.2_510.47.03-1.x86_64.rpm
+    rpm -i cuda-repo-rhel7-11-6-local-11.6.2_510.47.03-1.x86_64.rpm
+    yum clean all
+    yum -y install nvidia-driver-latest-dkms cuda
+    yum -y install cuda-drivers
+
+    rpm -i cudnn-local-repo-rhel7-8.4.0.27-1.0-1.x86_64.rpm
+    yum clean all
+
+    #install runtime library
+    yum install -y libcudnn8-8.4.0.27-1.cuda11.6
+    yum install -y libcudnn8-devel-8.4.0.27-1.cuda11.6
+    yum install -y libcudnn8-samples-8.4.0.27-1.cuda11.6
+
+    # Install TensorRT 8.2.4. Requires that libcudnn8 is installed above.
+    # pkg was retrieved locally due to registration limit
+    Os="rhel7"
+    Tag="cuda11.6-trt8.4.1.5-ga-20220604"
+    rpm -Uvh nv-tensorrt-repo-${Os}-${Tag}-1-1.x86_64.rpm
+    yum clean expire-cache
+
+    yum install -y -q tensorrt
+
+    python3.11 -m pip install tensorflow-gpu==2.8.0
+    python3.11 -m pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 -f https://download.pytorch.org/whl/cu113/torch_stable.html
+    python3.11 -m pip install torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric -f https://data.pyg.org/whl/torch-1.11.0+cu113.html
+    python3.11 -m pip install jupyter
+    python3.11 -m pip install jupyterlab
+
+    python3.11 -m pip install numpy
+    yum install -y -q python3-libnvinfer-devel
+    # going to use tensorRT with tensorflow
+    python3.11 -m pip install --no-dependencies protobuf
+    yum install -y -q uff-converter-tf
+
+    # Cleanup
+    yum -q clean
+    rm -rf /tmp/mpi
+    rm -rf /var/lib/apt/lists/*
+
+
+%test
+    python3 -V
+    pip -V
+    grep -q NAME=\"centos\" /etc/os-release
+        if [ $? -eq 0 ]; then
+                echo "Container base is centos as expected."
+        else
+                echo "Container base is not centos."
+                exit 1
+        fi
+
+
+%labels
+    Author yinuo
+    Version v0.0.1
+    Ref https://blog.csdn.net/lkgCSDN/article/details/84403329
