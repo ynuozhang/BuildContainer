@@ -17,9 +17,9 @@ From: centos:7
 %environment
     # Set system locale, cuDNN has to be downloaded locally
     PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
-    CUDA=/usr/local/cuda/lib64:/usr/local/cuda-11.4/lib64:/usr/local/cuda-11.4/targets/x86_64-linux/lib/
+    CUDA=/usr/local/cuda/lib64:/usr/local/cuda-11.6/lib64:/usr/local/cuda-11.6/targets/x86_64-linux/lib/
     LD_LIBRARY_PATH=/.singularity.d/libs:$CUDA
-    #PYTHONPATH=modules:/usr/local/lib/python3.11/dist-packages/:/usr/bin/python3.11:/usr/local/lib/python3.11
+    PYTHONPATH=/opt/rh/rh-python38/root/usr/bin/python:/opt/rh/rh-python38/root/usr/bin/python3.8
     LANG=C.UTF-8 LC_ALL=C.UTF-8
 
 %post
@@ -32,7 +32,7 @@ From: centos:7
     yum update -y -q
     yum makecache
 
-    yum install -y -q \
+    yum install -y \
         autoconf \
         automake \
         yum-utils \
@@ -45,6 +45,7 @@ From: centos:7
         gcc-gfortran \
         git \
         gnupg2 \
+        bash \
         epel-release \
         kernel-devel \
         libtool \
@@ -81,39 +82,22 @@ From: centos:7
         openssl-devel \
         kernel-headers \
         dkms 
+
+    yum install -y -q centos-release-scl-rh
+    yum --enablerepo=centos-sclo-rh -y install rh-python38 \
+        rh-python38-scldevel
         
     export LANG=en_US.utf-8
     echo "LC_ALL=en_US.utf-8" >> /etc/environment
 
-    # upgrade openssl for python > 3.7
-    #wget https://www.openssl.org/source/openssl-1.1.1o.tar.gz
-    tar -zxvf openssl-1.1.1o.tar.gz
-    cd openssl-1.1.1o
-    ./config --prefix=/usr/local/openssl no-zlib
-    make
-    make install
+    echo "source /opt/rh/rh-python38/enable" >> /etc/profile.d/python38.sh
+    echo "X_SCLS=\"`scl enable rh-python38 'echo $X_SCLS'`\"" >> /etc/profile.d/python38.sh
+    scl enable rh-python38 - << EOF >/dev/null 2>&1
+    which python
+    python -m pip install --upgrade pip
+    python -m pip --no-cache-dir install setuptools --upgrade
+    EOF
 
-    ln -s /usr/local/openssl/include/openssl /usr/include/openssl
-    ln -s /usr/local/openssl/lib/libssl.so.1.1 /usr/local/lib64/libssl.so
-    ln -s /usr/local/openssl/bin/openssl /usr/bin/openssl
-    echo "/usr/local/openssl/lib" >> /etc/ld.so.conf
-    ldconfig -v
-
-    cd /tmp
-
-    # install python3.11
-    yum groups mark install -y -q "Development Tools"
-    #wget https://www.python.org/ftp/python/3.11.0/Python-3.11.0b2.tgz
-    #tar -xzf Python-3.11.0b2.tgz
-    cd Python-3.11.0b2
-    ./configure --enable-optimizations --with-openssl=/usr/local/openssl
-    make -j "$(nproc)"
-    make altinstall
-    python3.11 -m pip install --upgrade pip
-    python3.11 -m pip --no-cache-dir install setuptools --upgrade
-
-    cd /tmp
-    # install cudatoolkits 11-4 that operate in x86-64, 18.04-Ubuntu, deb (local) installer type
     #wget https://developer.download.nvidia.com/compute/cuda/11.6.2/local_installers/cuda-repo-rhel7-11-6-local-11.6.2_510.47.03-1.x86_64.rpm
     rpm -i cuda-repo-rhel7-11-6-local-11.6.2_510.47.03-1.x86_64.rpm
     yum clean all
@@ -128,46 +112,16 @@ From: centos:7
     yum install -y libcudnn8-devel-8.4.0.27-1.cuda11.6
     yum install -y libcudnn8-samples-8.4.0.27-1.cuda11.6
 
-    # Install TensorRT 8.2.4. Requires that libcudnn8 is installed above.
-    # pkg was retrieved locally due to registration limit
-    Os="rhel7"
-    Tag="cuda11.6-trt8.4.1.5-ga-20220604"
-    rpm -Uvh nv-tensorrt-repo-${Os}-${Tag}-1-1.x86_64.rpm
-    yum clean expire-cache
+    # Install TensorRT 8.2.4. outside of the built
 
-    yum install -y -q tensorrt
-
-    python3.11 -m pip install tensorflow-gpu==2.8.0
-    python3.11 -m pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 -f https://download.pytorch.org/whl/cu113/torch_stable.html
-    python3.11 -m pip install torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric -f https://data.pyg.org/whl/torch-1.11.0+cu113.html
-    python3.11 -m pip install jupyter
-    python3.11 -m pip install jupyterlab
-
-    python3.11 -m pip install numpy
-    yum install -y -q python3-libnvinfer-devel
-    # going to use tensorRT with tensorflow
-    python3.11 -m pip install --no-dependencies protobuf
-    yum install -y -q uff-converter-tf
 
     # Cleanup
-    yum -q clean
+    yum -q clean all
     rm -rf /tmp/mpi
     rm -rf /var/lib/apt/lists/*
-
-
-%test
-    python3 -V
-    pip -V
-    grep -q NAME=\"centos\" /etc/os-release
-        if [ $? -eq 0 ]; then
-                echo "Container base is centos as expected."
-        else
-                echo "Container base is not centos."
-                exit 1
-        fi
-
 
 %labels
     Author yinuo
     Version v0.0.1
     Ref https://blog.csdn.net/lkgCSDN/article/details/84403329
+    Also check https://superuser.com/questions/331242/why-do-i-get-failed-to-set-locale-defaulting-to-c-when-using-yum
