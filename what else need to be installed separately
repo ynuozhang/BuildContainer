@@ -1,0 +1,25 @@
+    scl enable rh-python38 bash
+    
+    # install tensorRT outside of the built
+    # Install TensorRT 8.2.4. Requires that libcudnn8 is installed above.
+    # pkg was retrieved locally due to registration limit
+    Os="rhel7"
+    Tag="cuda11.6-trt8.4.1.5-ga-20220604"
+    rpm -Uvh nv-tensorrt-repo-${Os}-${Tag}-1-1.x86_64.rpm
+    yum clean expire-cache
+
+    yum install -y -q tensorrt
+
+    pip install --upgrade pip
+    pip --no-cache-dir install setuptools --upgrade
+    pip install tensorflow-gpu==2.8.0
+    pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 -f https://download.pytorch.org/whl/cu113/torch_stable.html
+    pip install torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric -f https://data.pyg.org/whl/torch-1.11.0+cu113.html
+    pip install jupyter
+    pip install jupyterlab
+
+    pip install numpy
+    yum install -y -q python3-libnvinfer-devel
+    # going to use tensorRT with tensorflow
+    pip install --no-dependencies protobuf
+    yum install -y -q uff-converter-tf
