@@ -1,0 +1,37 @@
+ # install cudatoolkits 11-4 that operate in x86-64, 18.04-Ubuntu, deb (local) installer type
+    #wget https://developer.download.nvidia.com/compute/cuda/11.6.2/local_installers/cuda-repo-rhel7-11-6-local-11.6.2_510.47.03-1.x86_64.rpm
+    rpm -i cuda-repo-rhel7-11-6-local-11.6.2_510.47.03-1.x86_64.rpm
+    yum clean all
+    yum -y install nvidia-driver-latest-dkms cuda
+    yum -y install cuda-drivers
+
+    rpm -i cudnn-local-repo-rhel7-8.4.0.27-1.0-1.x86_64.rpm
+    yum clean all
+
+    #install runtime library
+    yum install -y libcudnn8-8.4.0.27-1.cuda11.6
+    yum install -y libcudnn8-devel-8.4.0.27-1.cuda11.6
+    yum install -y libcudnn8-samples-8.4.0.27-1.cuda11.6
+
+    # Install TensorRT 8.2.4. Requires that libcudnn8 is installed above.
+    # pkg was retrieved locally due to registration limit
+    Os="rhel7"
+    Tag="cuda11.6-trt8.4.1.5-ga-20220604"
+    rpm -Uvh nv-tensorrt-repo-${Os}-${Tag}-1-1.x86_64.rpm
+    yum clean expire-cache
+
+    yum install -y -q tensorrt
+
+    python3.8 -m pip install --upgrade pip
+    python3.8 -m pip --no-cache-dir install setuptools --upgrade
+    python3.8 -m pip install tensorflow-gpu==2.8.0
+    python3.8 -m pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 -f https://download.pytorch.org/whl/cu113/torch_stable.html
+    python3.8 -m pip install torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric -f https://data.pyg.org/whl/torch-1.11.0+cu113.html
+    python3.8 -m pip install jupyter
+    python3.8 -m pip install jupyterlab
+
+    python3.8 -m pip install numpy
+    yum install -y -q python3-libnvinfer-devel
+    # going to use tensorRT with tensorflow
+    python3.8 -m pip install --no-dependencies protobuf
+    yum install -y -q uff-converter-tf
