@@ -1,3 +1,11 @@
+  echo "source /opt/rh/rh-python38/enable" >> /etc/profile.d/python38.sh
+    echo "X_SCLS="`scl enable rh-python38 'echo $X_SCLS'`"" >> /etc/profile.d/python38.sh
+    scl enable rh-python38 bash
+    which python
+    python -m pip install --upgrade pip
+    python -m pip --no-cache-dir install setuptools --upgrad
+ 
+ 
  # install cudatoolkits 11-4 that operate in x86-64, 18.04-Ubuntu, deb (local) installer type
     #wget https://developer.download.nvidia.com/compute/cuda/11.6.2/local_installers/cuda-repo-rhel7-11-6-local-11.6.2_510.47.03-1.x86_64.rpm
     rpm -i cuda-repo-rhel7-11-6-local-11.6.2_510.47.03-1.x86_64.rpm
