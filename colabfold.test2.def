@@ -1,0 +1,133 @@
+Bootstrap: docker
+#From: nvidia/cuda:11.1.1-cudnn8-runtime-ubuntu20.04
+From: nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
+
+%setup
+#section are first executed on the host system outside of the container after the base OS has been installed. . You can reference the container file system with the $SINGULARITY_ROOTFS environment variable in the %setup section
+
+
+%files
+#The %files section allows you to copy files into the container with greater safety than using the %setup section. Its general form is
+#Useless for now.
+
+%environment
+  #Define environment variable that will be executed at each runtime.
+  export TF_FORCE_UNIFIED_MEMORY=1
+  export XLA_PYTHON_CLIENT_MEM_FRACTION=4.0
+  export OPENMM_CPU_THREADS=32
+  export CUDA=11.8
+  export PATH=/opt/mmseqs/bin/:$PATH
+
+  #PATH
+  export PATH=/usr/local/cuda-11.8/bin:$PATH
+  export LD_LIBRARY_PATH=/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda-11.8/lib64:$LD_LIBRARY_PATH
+  export PATH=/opt/conda/bin:$PATH
+# XDG_CACHE_HOME needs to be overwritten at runtime
+  export XDG_CACHE_HOME=/opt/cache
+  export COLABFOLDDIR=/opt/conda/lib/python3.9/site-packages/colabfold
+
+%post -c /bin/bash
+
+  #Redefine the variables
+  export CUDA=11.8
+  export XDG_CACHE_HOME=/opt/cache
+  export COLABFOLDDIR=/opt/conda/lib/python3.9/site-packages/colabfold
+
+
+  #Install necessary packages
+  apt-get update \
+  && DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+        build-essential \
+        cmake \
+        cuda-command-line-tools-11-8\
+        git \
+        hmmer \
+        kalign \
+        tzdata \
+        wget \
+        curl \
+        vim \
+        libfontconfig1-dev \
+        libfreetype6-dev \
+        libfreetype6 \
+	linux-image-generic \
+	linux-headers-generic \
+	nvidia-driver-520 \
+  && rm -rf /var/lib/apt/lists/* \
+  && apt-get autoremove -y \
+  && apt-get clean
+
+
+  echo "Finish installing linux dependents"
+
+  cd  /opt;
+  wget https://mmseqs.com/latest/mmseqs-linux-avx2.tar.gz;
+  tar xvfz mmseqs-linux-avx2.tar.gz;
+  rm mmseqs-linux-avx2.tar.gz
+  cd -
+
+  export PATH=/opt/mmseqs/bin/:$PATH
+
+  echo "Install Miniconda package manager."
+  wget -q -P /tmp https://repo.anaconda.com/miniconda/Miniconda3-py39_23.9.0-0-Linux-x86_64.sh \
+  && bash /tmp/Miniconda3-py39_23.9.0-0-Linux-x86_64.sh -b -p /opt/conda \
+  && rm /tmp/Miniconda3-py39_23.9.0-0-Linux-x86_64.sh
+
+  #Add conda in the PATH.
+  PATH="/opt/conda/bin:/usr/local/cuda-11.8/bin:$PATH"
+  conda install -qy conda \
+  && conda install -y -c conda-forge \
+        openmm \
+        cudatoolkit==11.8 \
+        pdbfixer \
+        pip \
+        python=3.9 \
+  && conda clean --all --force-pkgs-dirs --yes
+
+  #Test OpenMM
+  /bin/rm -rf /tmp/hh-suite \
+  && git clone --branch v3.3.0 https://github.com/soedinglab/hh-suite.git /tmp/hh-suite \
+  && mkdir /tmp/hh-suite/build \
+  && cd /tmp/hh-suite/build \
+  && cmake -DCMAKE_INSTALL_PREFIX=/opt/hhsuite .. \
+  && make -j 4 && make install \
+  && ln -s /opt/hhsuite/bin/* /usr/bin \
+  && cd / \
+  && /bin/rm -rf /tmp/hh-suite
+  
+  git clone https://github.com/openmm/pdbfixer.git /tmp/pdbfixer \
+  && cd /tmp/pdbfixer \
+  && python setup.py install
+  
+  wget https://github.com/TimoLassmann/kalign/archive/refs/tags/v3.3.5.tar.gz \
+  && tar -zxvf v3.3.5.tar.gz \
+  && cd kalign-3.3.5 \
+  && mkdir build \
+  && cd build \
+  && cmake .. \
+  && make \
+  && make test 
+  
+  #Install ColabFold and Jaxlib
+  #UPDATE ALPHAFOLD 2.3
+  pip3 install -q "colabfold[alphafold-minus-jax] @ git+https://github.com/sokrypton/ColabFold" chex==0.1.7
+  pip3 install -q --upgrade jax==0.4.20 jaxlib==0.4.20+cuda11.cudnn86 -f  https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+  pip3 install -q --no-dependencies tensorflow-gpu==2.5.0 nvidia-tensorrt nvidia-pyindex keras
+  pip3 install --upgrade --no-dependencies numpy==1.23.4 dm-haiku==0.0.10 protobuf==3.19.0 mock
+
+
+  #Patch Colabfold batch.py to remove environment variable for GPU memory. Those variable are setted up externally.
+  cd  /opt/conda/lib/python3.9/site-packages/colabfold/; wget https://raw.githubusercontent.com/tubiana/colabfold_singularity/main/remove_environ_variable.patch; patch -s -p0 < remove_environ_variable.patch; rm remove_environ_variable.patch
+
+  # #Apply patches and parameters
+  # after alphafold v2.3.2, nolonger need to apply openMM patch (originally was for disulfide bond recognition)
+  cd $COLABFOLDDIR
+  sed -i -e "s#props_path = \"stereo_chemical_props.txt\"#props_path = \"${COLABFOLDDIR}/stereo_chemical_props.txt\"#" batch.py
+  wget -q https://git.scicore.unibas.ch/schwede/openstructure/-/raw/7102c63615b64735c4941278d92b554ec94415f8/modules/mol/alg/src/stereo_chemical_props.txt
+  #wget https://raw.githubusercontent.com/deepmind/alphafold/main/docker/openmm.patch
+  #cd  /opt/conda/lib/python3.9/site-packages; wget https://raw.githubusercontent.com/deepmind/alphafold/main/docker/openmm.patch; patch -s -p0 < openmm.patch; rm openmm.patch
+  cd  /opt/conda/lib/python3.9/site-packages/colabfold/; wget https://raw.githubusercontent.com/tubiana/colabfold_singularity/main/matplotlib.patch; patch -s -p0 < matplotlib.patch; rm matplotlib.patch
+
+%labels
+  author thibault Tubiana
+
